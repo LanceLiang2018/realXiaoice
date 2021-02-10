@@ -7,18 +7,27 @@
 
 __author__ = "Benny <benny.think@gmail.com>"
 
+import json
 import logging
 import os
-from platform import uname
-import json
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from platform import uname
+
+from tornado import escape
 from tornado import web, ioloop, httpserver, gen, options
 from tornado.concurrent import run_on_executor
 
-from xiaoice import chat
+from xiaoice import chat, chat_with_img
+
+
+def json_encode(value):
+    return json.dumps(value, ensure_ascii=False)
+
 
 ALLOWED_IPS, AUTH = [], False
+
+escape.json_encode = json_encode
 
 
 class BaseHandler(web.RequestHandler):
@@ -46,7 +55,7 @@ class ChatHandler(BaseHandler):
                     and self.request.body:
                 value = json.loads(self.request.body).get(name)
             else:
-                value = self.get_argument(name, None)
+                value = self.get_argument(name, "text")
             return value
         except ValueError as e:
             logging.error('Failed to extract arguments {}'.format(e))
@@ -75,9 +84,14 @@ class ChatHandler(BaseHandler):
             return denied
 
         user_input = self.get_correct_argument('text')
+        user_input_type = self.get_correct_argument('type')
+        response = {}
         if user_input:
             try:
-                response = {"text": chat(user_input), "debug": ""}
+                if user_input_type == 'text':
+                    response = {"text": chat(user_input), "debug": ""}
+                elif user_input_type == 'img':
+                    response = {"text": chat_with_img(user_input), "debug": ""}
             except Exception as e:
                 logging.error(traceback.format_exc())
                 self.set_status(500)
@@ -120,7 +134,7 @@ class RunServer:
         if uname()[0] == 'Windows':
             tornado_server.start()
         else:
-            tornado_server.start(None)
+            tornado_server.start(1)
 
         try:
             print('Server is running on http://{host}:{port}'.format(host=host, port=port))
